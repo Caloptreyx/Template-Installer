@@ -1,0 +1,68 @@
+{
+  "format": "calagopus-template-installer",
+  "version": 1,
+  "exported_at": "2026-09-28T21:48:31.894983221Z",
+  "template": {
+    "name": "Simple Voice Chat",
+    "description": "Allow players to talk to each other in game with proximity voice chat, groups and more. Installs Simple Voice Chat 2.6.24 (Paper 26.1.2 \u2013 26.3) and configures its port.",
+    "variables": [
+      {
+        "key": "voice_port",
+        "label": "Voice Chat Port",
+        "description": "The UDP port voice chat runs on. Add a separate allocation in the Network tab and enter its port here; using the main server port is not recommended.",
+        "default_value": "",
+        "rules": [
+          "required",
+          "integer",
+          "between:1024,65535"
+        ]
+      },
+      {
+        "key": "enable_groups",
+        "label": "Allow group chats",
+        "description": "Let players create voice chat groups.",
+        "default_value": "1",
+        "rules": [
+          "boolean"
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "name": "Stop the server",
+        "condition": null,
+        "type": "power",
+        "action": "stop",
+        "wait": true
+      },
+      {
+        "name": "Remove a previous copy",
+        "condition": null,
+        "type": "delete",
+        "path": "plugins/voicechat-bukkit-2.6.24.jar"
+      },
+      {
+        "name": "Download Simple Voice Chat",
+        "condition": null,
+        "type": "pull_file",
+        "url": "https://cdn.modrinth.com/data/9eGKb6K1/versions/EJth3OAr/voicechat-bukkit-2.6.24.jar",
+        "directory": "plugins",
+        "file_name": "voicechat-bukkit-2.6.24.jar"
+      },
+      {
+        "name": "Write the voice chat config",
+        "condition": null,
+        "type": "write_file",
+        "path": "plugins/voicechat/voicechat-server.properties",
+        "content": "# Simple Voice Chat server config v2.6.24\n\n# The port number to use for the voice chat communication.\n# Audio packets are always transmitted via the UDP protocol on the port number\n# specified here, independently of other networking used for the game server.\n# Set this to '-1' to use the same port number that is used by the Minecraft server.\n# However, it is strongly recommended NOT to use the same port number because UDP on\n# it is also used by default for the server query. Doing so may crash the server!\nport={{ voice_port }}\n# The server IP address to bind the voice chat to\n# Leave blank to use the 'server-ip' property from the 'server.properties' config file\n# To bind to the wildcard IP address, use '*'\nbind_address=\n# The distance to which the voice can be heard\nmax_voice_distance=48.0\n# The multiplier of the voice distance when crouching\ncrouch_distance_multiplier=1.0\n# The multiplier of the voice distance when whispering\nwhisper_distance_multiplier=0.5\n# The Opus codec\n# Valid values are 'VOIP', 'AUDIO', and 'RESTRICTED_LOWDELAY'\ncodec=VOIP\n# The maximum size that audio packets are allowed to have (in bytes)\n# Set this to a lower value if audio packets don't arrive\nmtu_size=1024\n# The frequency at which keep-alive packets are sent (in milliseconds)\n# Setting this to a higher value may result in timeouts\nkeep_alive=1000\n# If group chats are allowed\nenable_groups={{ \"true\" if enable_groups == \"1\" else \"false\" }}\n# The hostname that clients should use to connect to the voice chat\n# This may also include a port, e.g. 'example.com:24454'\n# Do NOT change this value if you don't know what you're doing\nvoice_host=\n# If players are allowed to record the voice chat audio\nallow_recording=true\n# If spectators are allowed to talk to other players\nspectator_interaction=false\n# If spectators can talk to players they are spectating\nspectator_player_possession=false\n# If players without the voice chat mod should be kicked from the server\nforce_voice_chat=false\n# The amount of time the server should wait to check if a player has the mod installed (in milliseconds)\n# Only relevant when 'force_voice_chat' is set to 'true'\nlogin_timeout=10000\n# The range in which the voice chat should broadcast audio\n# A value less than 0 means 'max_voice_distance'\nbroadcast_range=-1.0\n# If the voice chat server should reply to external pings\nallow_pings=true\n"
+      },
+      {
+        "name": "Start the server",
+        "condition": null,
+        "type": "power",
+        "action": "start",
+        "wait": false
+      }
+    ]
+  }
+}

@@ -94,6 +94,9 @@ Admins manage templates on the extension's card under **Admin → Extensions**. 
 
 ## Import / export format
 
+`examples/simple-voice-chat.template.json` is a complete example: it stops the server, downloads
+Simple Voice Chat, writes its config with the port the user picks and starts the server again.
+
 ```json
 {
   "format": "calagopus-template-installer",
