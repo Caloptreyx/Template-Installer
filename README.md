@@ -12,9 +12,8 @@ Package name: `dev.caloptreyx.templates` · Requires panel `>=1.2.3`
 - **Step system**: 11 actions that run in order against the server through Wings. Every step can
   have a label and a **condition**, and the install stops at the first step that fails.
 - **Templating in every field**: paths, URLs, contents, search/replace and conditions are all
-  [minijinja](https://docs.rs/minijinja) (Jinja2) templates. This replaces the PHP support of the
-  original Pterodactyl addon: it gives you expressions, filters, `if`/`for` and functions, all
-  sandboxed, and the panel needs no PHP.
+  [minijinja](https://docs.rs/minijinja) (Jinja2) templates with expressions, filters, `if`/`for`
+  and functions, all sandboxed.
 - **User variables** with the panel's Laravel-style validation rules (`required`, `in:a,b`,
   `integer`, `between:1,100`, `regex:/…/`, …), the same rules egg variables use. The install form
   picks a select, switch, number or text input from the rules.
