@@ -29,6 +29,7 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     env.add_function("random_string", random_string);
     env.add_function("uuid", || Uuid::new_v4().to_string());
     env.add_function("now", now);
+    env.add_filter("tojson", tojson);
     env
 });
 
@@ -69,6 +70,54 @@ fn now(format: Option<String>, kwargs: Kwargs) -> Result<String, Error> {
         )
     })?;
     Ok(out)
+}
+
+/// `tojson` as minijinja 2 rendered it (compact unless `indent` is given), which
+/// minijinja 3 changed to spaced output; rendered files must not change.
+fn tojson(
+    value: &minijinja::Value,
+    indent: Option<minijinja::Value>,
+    kwargs: Kwargs,
+) -> Result<minijinja::Value, Error> {
+    let indent = match indent {
+        Some(indent) => Some(indent),
+        None => kwargs.get("indent")?,
+    };
+    let indent = match indent {
+        None => None,
+        Some(val) => match bool::try_from(val.clone()) {
+            Ok(true) => Some(2),
+            Ok(false) => None,
+            Err(_) => Some(usize::try_from(val)?),
+        },
+    };
+    kwargs.assert_all_used()?;
+    let json = match indent {
+        Some(indent) => {
+            let indentation = " ".repeat(indent);
+            let mut out = Vec::new();
+            let formatter = serde_json::ser::PrettyFormatter::with_indent(indentation.as_bytes());
+            let mut serializer = serde_json::Serializer::with_formatter(&mut out, formatter);
+            serde::Serialize::serialize(value, &mut serializer)
+                .map(|()| String::from_utf8(out).expect("serde_json writes UTF-8"))
+        }
+        None => serde_json::to_string(value),
+    }
+    .map_err(|err| {
+        Error::new(ErrorKind::InvalidOperation, "cannot serialize to JSON").with_source(err)
+    })?;
+    // safe for both HTML and JSON
+    let mut escaped = String::with_capacity(json.len());
+    for c in json.chars() {
+        match c {
+            '<' => escaped.push_str("\\u003c"),
+            '>' => escaped.push_str("\\u003e"),
+            '&' => escaped.push_str("\\u0026"),
+            '\'' => escaped.push_str("\\u0027"),
+            _ => escaped.push(c),
+        }
+    }
+    Ok(minijinja::Value::from_safe_string(escaped))
 }
 
 fn describe(err: &Error) -> String {
@@ -364,6 +413,26 @@ mod tests {
             chrono::NaiveDateTime::parse_from_str(&r.render("{{ now() }}").unwrap(), "%Y-%m-%d %H:%M:%S")
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn tojson_is_compact_and_escaped() {
+        let r = renderer();
+        assert_eq!(
+            r.render("{{ vars|tojson }}").unwrap(),
+            r#"{"MOTD":"Hello \u003cworld\u003e \u0026 \"friends\"","PVP":"1"}"#
+        );
+        assert_eq!(
+            r.render("{{ [1, 'it\\'s', none, true]|tojson }}").unwrap(),
+            r#"[1,"it\u0027s",null,true]"#
+        );
+        assert_eq!(
+            r.render("{{ {'a': [1, 2]}|tojson(indent=2) }}").unwrap(),
+            "{\n  \"a\": [\n    1,\n    2\n  ]\n}"
+        );
+        assert_eq!(r.render("{{ {'a': 1}|tojson(true) }}").unwrap(), "{\n  \"a\": 1\n}");
+        assert_eq!(r.render("{{ {'a': 1}|tojson(false) }}").unwrap(), r#"{"a":1}"#);
+        assert!(r.render("{{ 1|tojson(bogus=1) }}").is_err());
     }
 
     #[test]
