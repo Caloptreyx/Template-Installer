@@ -1,5 +1,9 @@
 //! Renders step fields with minijinja against the install context.
-use minijinja::{AutoEscape, Environment, Error, ErrorKind, UndefinedBehavior, value::Kwargs};
+use minijinja::{
+    AutoEscape, Environment, Error, ErrorKind, UndefinedBehavior,
+    syntax::SyntaxConfig,
+    value::{Kwargs, Serde},
+};
 use rand::RngExt;
 use serde::Serialize;
 use shared::{
@@ -16,7 +20,12 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     env.set_auto_escape_callback(|_| AutoEscape::None);
     env.set_undefined_behavior(UndefinedBehavior::Strict);
     // file contents keep their final newline
-    env.set_keep_trailing_newline(true);
+    env.set_syntax(
+        SyntaxConfig::builder()
+            .keep_trailing_newline(true)
+            .build()
+            .expect("valid template syntax config"),
+    );
     env.add_function("random_string", random_string);
     env.add_function("uuid", || Uuid::new_v4().to_string());
     env.add_function("now", now);
@@ -223,13 +232,10 @@ impl Renderer {
             .iter()
             .map(|(key, value)| (key.as_str(), value.as_str()))
             .collect();
-        context.insert("vars".to_string(), minijinja::Value::from_serialize(vars));
-        context.insert(
-            "server".to_string(),
-            minijinja::Value::from_serialize(server),
-        );
-        context.insert("user".to_string(), minijinja::Value::from_serialize(user));
-        context.insert("panel".to_string(), minijinja::Value::from_serialize(panel));
+        context.insert("vars".to_string(), minijinja::Value::from(Serde(vars)));
+        context.insert("server".to_string(), minijinja::Value::from(Serde(server)));
+        context.insert("user".to_string(), minijinja::Value::from(Serde(user)));
+        context.insert("panel".to_string(), minijinja::Value::from(Serde(panel)));
 
         Self {
             context: minijinja::Value::from(context),

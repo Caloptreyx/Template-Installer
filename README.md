@@ -5,7 +5,7 @@ admin team: Minecraft setups, plugin bundles, configs pulled from GitHub, and mo
 ordered list of installation steps. Before it runs, the user fills in the template's variables, and
 the values are written into the server's configs.
 
-Package name: `dev.caloptreyx.templates` · Requires panel `>=1.2.3`
+Package name: `dev.caloptreyx.templates` · Requires panel `>=1.2.7`
 
 ## Features
 
