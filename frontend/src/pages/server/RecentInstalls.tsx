@@ -1,5 +1,5 @@
-import { Center } from '@mantine/core';
 import type { UseQueryResult } from '@tanstack/react-query';
+import { Center } from '@mantine/core';
 import { httpErrorToHuman } from '@/api/axios.ts';
 import Table, { TableData, TableRow } from '@/elements/data-display/Table.tsx';
 import FormattedTimestamp from '@/elements/time/FormattedTimestamp.tsx';

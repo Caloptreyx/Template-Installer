@@ -1,6 +1,6 @@
+import type { ReactNode } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { SimpleGrid } from '@mantine/core';
-import type { ReactNode } from 'react';
 import { httpErrorToHuman } from '@/api/axios.ts';
 import Alert from '@/elements/feedback/Alert.tsx';
 import Spinner from '@/elements/feedback/Spinner.tsx';
