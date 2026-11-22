@@ -24,6 +24,24 @@ Package name: `dev.caloptreyx.templates` · Requires panel `>=1.2.10`
 - **Live progress**: users watch each step finish. The last 20 installs are listed per server and
   each install is written to the server's activity log.
 
+## Screenshots
+
+**Templates page**: the templates offered for this server's egg and the recent installs.
+
+![Templates page](docs/screenshots/templates.png)
+
+**Install form**: the template's variables, with inputs picked from their validation rules.
+
+![Install form with template variables](docs/screenshots/install-form.png)
+
+**Live progress**: every step with its result.
+
+![Completed install with each step](docs/screenshots/install-progress.png)
+
+**Admin template editor**: steps with templated paths and content.
+
+![Admin step editor](docs/screenshots/admin-step-editor.png)
+
 ## Steps
 
 | Step | Fields | Behaviour |
