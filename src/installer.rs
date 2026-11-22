@@ -10,6 +10,7 @@ use serde::Deserialize;
 use shared::{
     State,
     models::{server::Server, user::User},
+    response::ApiResponse,
 };
 use std::collections::HashMap;
 use utoipa::ToSchema;
@@ -31,16 +32,46 @@ pub enum Outcome {
     Invalid(Vec<String>),
     /// Another install is running on the server.
     Busy,
+    /// The template's pulls would exceed the panel's file pull rate limit.
+    RateLimited(ApiResponse),
 }
 
-/// The core permissions the template's power steps need.
+/// The core permissions the core file and power routes need for what a step does;
+/// `templates.install` never stands in for them.
+fn step_permissions(kind: &StepKind) -> Vec<&'static str> {
+    match kind {
+        // files/write, files/create-directory and files/pull
+        StepKind::WriteFile { .. }
+        | StepKind::ReplaceInFile { .. }
+        | StepKind::AppendFile { .. }
+        | StepKind::PrependFile { .. }
+        | StepKind::CreateFolder { .. }
+        | StepKind::PullFile { .. } => vec!["files.create"],
+        // files/decompress, then files/delete for the archive
+        StepKind::UnzipFile { delete_archive, .. } => {
+            if *delete_archive {
+                vec!["files.archive", "files.delete"]
+            } else {
+                vec!["files.archive"]
+            }
+        }
+        // files/rename, which creates missing directories
+        StepKind::Move { .. } | StepKind::MoveFolderContents { .. } => {
+            vec!["files.update", "files.create"]
+        }
+        StepKind::Delete { .. } => vec!["files.delete"],
+        StepKind::Power { action, .. } => vec![action.permission()],
+    }
+}
+
+/// The core permissions the template's steps need, conditional steps included.
 pub fn required_permissions(steps: &[Step]) -> Vec<&'static str> {
     let mut permissions = Vec::new();
     for step in steps {
-        if let StepKind::Power { action, .. } = step.kind
-            && !permissions.contains(&action.permission())
-        {
-            permissions.push(action.permission());
+        for permission in step_permissions(&step.kind) {
+            if !permissions.contains(&permission) {
+                permissions.push(permission);
+            }
         }
     }
     permissions
@@ -256,6 +287,33 @@ pub async fn start(
         .collect();
     if !errors.is_empty() {
         return Ok(Outcome::Invalid(errors));
+    }
+
+    // Each pull counts against the panel's file pull rate limit, like a core files/pull call.
+    let pulls = planned
+        .iter()
+        .flatten()
+        .filter(|kind| matches!(kind, StepKind::PullFile { .. }))
+        .count();
+    if pulls > 0 {
+        let ratelimit = state
+            .settings
+            .get_as(|s| s.ratelimits.client_servers_files_pull)
+            .await?;
+        for _ in 0..pulls {
+            if let Err(response) = state
+                .cache
+                .ratelimit(
+                    "client/servers/files/pull",
+                    ratelimit.hits,
+                    ratelimit.window_seconds,
+                    server.uuid.to_string(),
+                )
+                .await
+            {
+                return Ok(Outcome::RateLimited(response));
+            }
+        }
     }
 
     let progress: Vec<StepProgress> = template
@@ -507,6 +565,48 @@ mod tests {
         assert_eq!(
             required_permissions(&steps),
             vec!["control.stop", "control.restart"]
+        );
+    }
+
+    #[test]
+    fn file_step_permissions() {
+        let steps = [
+            step(
+                None,
+                StepKind::PullFile {
+                    url: "https://example.com/a.zip".to_string(),
+                    directory: String::new(),
+                    file_name: None,
+                },
+            ),
+            step(
+                None,
+                StepKind::UnzipFile {
+                    path: "a.zip".to_string(),
+                    destination: None,
+                    delete_archive: true,
+                },
+            ),
+            step(
+                None,
+                StepKind::MoveFolderContents {
+                    from: "a".to_string(),
+                    to: "b".to_string(),
+                },
+            ),
+        ];
+        assert_eq!(
+            required_permissions(&steps),
+            vec!["files.create", "files.archive", "files.delete", "files.update"]
+        );
+        assert_eq!(
+            required_permissions(&[step(
+                None,
+                StepKind::Delete {
+                    path: "a".to_string()
+                }
+            )]),
+            vec!["files.delete"]
         );
     }
 }

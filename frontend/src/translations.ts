@@ -216,6 +216,7 @@ const translations = defineTranslations({
     install: {
       title: 'Install {name}',
       install: 'Install',
+      missingPermissions: 'Installing this template also needs these permissions: {permissions}',
       noVariables: 'This template has no settings. Installing runs its steps right away.',
       warning: 'Installing changes files on this server. Make sure you have a backup of anything important.',
       required: 'This field is required.',

@@ -5,7 +5,7 @@ admin team: Minecraft setups, plugin bundles, configs pulled from GitHub, and mo
 ordered list of installation steps. Before it runs, the user fills in the template's variables, and
 the values are written into the server's configs.
 
-Package name: `dev.caloptreyx.templates` · Requires panel `>=1.2.7`
+Package name: `dev.caloptreyx.templates` · Requires panel `>=1.2.10`
 
 ## Features
 
@@ -44,8 +44,11 @@ A step with a **condition** runs only if the rendered condition is not `""`, `0`
 `off` (case-insensitive), e.g. `{{ INSTALL_GEYSER }}` or `{% if MODE == "creative" %}1{% endif %}`.
 
 Paths are relative to the server root and may not leave it. Files the user can't access (subuser
-ignored files) are refused. A template with power steps also needs the matching `control.*`
-permission.
+ignored files) are refused. Running a template also needs the core permission of every step it
+contains, as the panel's own file and power routes require: `files.create` for writing, editing,
+pulling and creating folders, `files.archive` for unzipping (plus `files.delete` with *delete
+archive*), `files.update` and `files.create` for moves, `files.delete` for deletes, and the
+matching `control.*` for power steps. Each pull counts against the panel's file pull rate limit.
 
 ## Template variables
 
@@ -79,7 +82,8 @@ rcon.password={{ random_string(24) }}
 
 ## Permissions
 
-- Server: `templates.read` (see templates and install history), `templates.install` (run installs).
+- Server: `templates.read` (see templates and install history), `templates.install` (run installs,
+  together with the core permissions of the template's steps, see above).
 - Admin: `templates.read`, `templates.manage`.
 
 ## Installation

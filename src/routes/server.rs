@@ -77,6 +77,7 @@ mod install {
         (status = UNAUTHORIZED, body = ApiError),
         (status = NOT_FOUND, body = ApiError),
         (status = CONFLICT, body = ApiError),
+        (status = TOO_MANY_REQUESTS, body = ApiError),
     ), params(
         ("server" = uuid::Uuid, description = "The server ID"),
         ("template" = uuid::Uuid, description = "The template ID"),
@@ -110,6 +111,7 @@ mod install {
                         .with_status(StatusCode::CONFLICT)
                         .ok();
                 }
+                Outcome::RateLimited(response) => return Err(response),
             };
 
         let mut log = log;

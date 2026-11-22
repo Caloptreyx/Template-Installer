@@ -51,6 +51,8 @@ pub struct ApiClientTemplate {
     pub description: Option<String>,
     pub variables: Vec<Variable>,
     pub steps: Vec<ApiClientStep>,
+    /// Core server permissions the user needs besides `templates.install` to run it.
+    pub required_permissions: Vec<&'static str>,
 }
 
 #[derive(ToSchema, Serialize)]
@@ -228,6 +230,7 @@ impl Template {
 
     pub fn into_client_api(self) -> ApiClientTemplate {
         ApiClientTemplate {
+            required_permissions: crate::installer::required_permissions(&self.steps.0),
             uuid: self.uuid,
             name: self.name,
             description: self.description,

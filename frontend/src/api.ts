@@ -138,6 +138,8 @@ export const clientTemplateSchema = z.object({
   description: z.string().nullable(),
   variables: z.array(variableSchema),
   steps: z.array(z.object({ type: stepTypeSchema, name: z.string().nullable() })),
+  /** Core server permissions running the template needs besides `templates.install`. */
+  requiredPermissions: z.array(z.string()),
 });
 export type ClientTemplate = z.infer<typeof clientTemplateSchema>;
 

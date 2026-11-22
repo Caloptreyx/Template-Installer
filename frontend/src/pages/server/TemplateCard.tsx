@@ -10,12 +10,15 @@ import Stack from '@/elements/layout/Stack.tsx';
 import Tooltip from '@/elements/overlays/Tooltip.tsx';
 import Text from '@/elements/typography/Text.tsx';
 import Title from '@/elements/typography/Title.tsx';
+import { useServerPermissions } from '@/plugins/usePermissions.ts';
 import type { ClientTemplate } from '../../api.ts';
 import { STEP_ICONS } from '../../lib/steps.ts';
 import { useExtTranslations } from '../../translations.ts';
 
 export default function TemplateCard({ template, onInstall }: { template: ClientTemplate; onInstall: () => void }) {
   const { t: tExt, tItem } = useExtTranslations();
+  const granted = useServerPermissions(template.requiredPermissions);
+  const missing = template.requiredPermissions.filter((_, index) => !granted[index]);
 
   const stepTypes = [...new Set(template.steps.map((step) => step.type))];
 
@@ -53,7 +56,17 @@ export default function TemplateCard({ template, onInstall }: { template: Client
             ))}
           </Group>
           <ServerCan action='templates.install'>
-            <Button fullWidth leftSection={<FontAwesomeIcon icon={faWandMagicSparkles} />} onClick={onInstall}>
+            {missing.length > 0 && (
+              <Text size='xs' c='dimmed'>
+                {tExt('install.missingPermissions', { permissions: missing.join(', ') })}
+              </Text>
+            )}
+            <Button
+              fullWidth
+              leftSection={<FontAwesomeIcon icon={faWandMagicSparkles} />}
+              disabled={missing.length > 0}
+              onClick={onInstall}
+            >
               {tExt('install.install', {})}
             </Button>
           </ServerCan>
