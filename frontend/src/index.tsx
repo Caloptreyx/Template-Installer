@@ -7,7 +7,7 @@ import { getExtTranslations } from './translations.ts';
 
 class CaloptreyxTemplatesExtension extends Extension {
   public cardConfigurationPage: React.FC | null = AdminConfigurationPage;
-  public cardIcon: React.ReactNode = <FontAwesomeIcon icon={faWandMagicSparkles} />;
+  public cardIcon = <FontAwesomeIcon icon={faWandMagicSparkles} />;
 
   public initialize(ctx: ExtensionContext): void {
     ctx.extensionRegistry.enterRoutes((routes) =>
