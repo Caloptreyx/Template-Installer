@@ -2,7 +2,7 @@
 //! checks, the install row and the background executor.
 use crate::{
     db::{Install, StepProgress, StepStatus, Template},
-    model::{FieldKind, Step, StepKind, Variable, absolute, is_truthy, split_path},
+    model::{FieldKind, Step, StepKind, Variable, absolute, is_truthy, join_path, split_path},
     render::{PanelContext, Renderer, ServerContext, UserContext},
     validate::check_value,
 };
@@ -207,7 +207,7 @@ pub fn check_access(server: &mut Server, kind: &StepKind) -> Result<(), String> 
                 return denied(directory);
             }
             if let Some(file_name) = file_name {
-                let path = format!("{directory}/{file_name}");
+                let path = join_path(directory, file_name);
                 if server.is_ignored(absolute(&path), false) {
                     return denied(&path);
                 }
@@ -289,32 +289,21 @@ pub async fn start(
         return Ok(Outcome::Invalid(errors));
     }
 
-    // Each pull counts against the panel's file pull rate limit, like a core files/pull call.
     let pulls = planned
         .iter()
         .flatten()
         .filter(|kind| matches!(kind, StepKind::PullFile { .. }))
         .count();
-    if pulls > 0 {
-        let ratelimit = state
-            .settings
-            .get_as(|s| s.ratelimits.client_servers_files_pull)
-            .await?;
-        for _ in 0..pulls {
-            if let Err(response) = state
-                .cache
-                .ratelimit(
-                    "client/servers/files/pull",
-                    ratelimit.hits,
-                    ratelimit.window_seconds,
-                    server.uuid.to_string(),
-                )
-                .await
-            {
-                return Ok(Outcome::RateLimited(response));
-            }
-        }
-    }
+    let pull_ratelimit = if pulls > 0 {
+        Some(
+            state
+                .settings
+                .get_as(|s| s.ratelimits.client_servers_files_pull)
+                .await?,
+        )
+    } else {
+        None
+    };
 
     let progress: Vec<StepProgress> = template
         .steps
@@ -342,6 +331,28 @@ pub async fn start(
     else {
         return Ok(Outcome::Busy);
     };
+
+    // Each pull counts against the panel's file pull rate limit, like a core files/pull call.
+    // Charged only after reserving the running slot so busy/concurrent requests never burn quota.
+    if let Some(ratelimit) = pull_ratelimit {
+        for _ in 0..pulls {
+            if let Err(response) = state
+                .cache
+                .ratelimit(
+                    "client/servers/files/pull",
+                    ratelimit.hits,
+                    ratelimit.window_seconds,
+                    server.uuid.to_string(),
+                )
+                .await
+            {
+                if let Err(err) = Install::delete(&state.database, install).await {
+                    tracing::warn!(%install, "failed to remove rate-limited install: {err}");
+                }
+                return Ok(Outcome::RateLimited(response));
+            }
+        }
+    }
 
     crate::executor::spawn(state.clone(), server, user.uuid, install, planned, progress);
     Ok(Outcome::Started(install))

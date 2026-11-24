@@ -14,6 +14,7 @@ export default function useInstall(serverUuid: string, installUuid: string | nul
     queryKey: installQueryKey(serverUuid, installUuid),
     queryFn: () => getServerInstall(serverUuid, installUuid ?? ''),
     enabled: installUuid !== null,
-    refetchInterval: (query) => (query.state.data?.status === 'running' ? POLL_INTERVAL_MS : false),
+    refetchInterval: (query) =>
+      query.state.status !== 'error' && query.state.data?.status === 'running' ? POLL_INTERVAL_MS : false,
   });
 }

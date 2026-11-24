@@ -1,0 +1,83 @@
+{
+  "format": "calagopus-template-installer",
+  "version": 1,
+  "exported_at": "2026-11-24T08:30:00Z",
+  "template": {
+    "name": "spark Profiler",
+    "description": "Lightweight performance profiler for diagnosing TPS drops, tick spikes, and memory usage. Installs spark 1.10.196 (Bukkit/Spigot/Paper) and writes its configuration.",
+    "variables": [
+      {
+        "key": "background_profiler",
+        "label": "Background Profiler",
+        "description": "Run a low-overhead profiler continuously in the background so reports are always ready.",
+        "default_value": "1",
+        "rules": [
+          "boolean"
+        ]
+      },
+      {
+        "key": "enable_tick_monitoring",
+        "label": "Enable Tick Monitoring on Startup",
+        "description": "Automatically log unusually slow ticks in the console when the server boots.",
+        "default_value": "0",
+        "rules": [
+          "boolean"
+        ]
+      },
+      {
+        "key": "tick_threshold_ms",
+        "label": "Tick Warning Threshold (ms)",
+        "description": "Minimum tick duration in milliseconds reported by the tick monitor.",
+        "default_value": "100",
+        "rules": [
+          "required",
+          "integer",
+          "between:50,5000"
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "name": "Stop the server",
+        "condition": null,
+        "type": "power",
+        "action": "stop",
+        "wait": true
+      },
+      {
+        "name": "Create spark config folder",
+        "condition": null,
+        "type": "create_folder",
+        "path": "plugins/spark"
+      },
+      {
+        "name": "Remove previous spark jar",
+        "condition": null,
+        "type": "delete",
+        "path": "plugins/spark-1.10.196-bukkit.jar"
+      },
+      {
+        "name": "Download spark profiler",
+        "condition": null,
+        "type": "pull_file",
+        "url": "https://ci.lucko.me/job/spark/548/artifact/spark-bukkit/build/libs/spark-1.10.196-bukkit.jar",
+        "directory": "plugins",
+        "file_name": "spark-1.10.196-bukkit.jar"
+      },
+      {
+        "name": "Write spark configuration",
+        "condition": null,
+        "type": "write_file",
+        "path": "plugins/spark/config.json",
+        "content": "{\n  \"backgroundProfiler\": {{ \"true\" if background_profiler == \"1\" else \"false\" }},\n  \"enableTickMonitoring\": {{ \"true\" if enable_tick_monitoring == \"1\" else \"false\" }},\n  \"tickMonitoringThreshold\": {{ tick_threshold_ms }},\n  \"bytesUrl\": \"https://spark.lucko.me/\"\n}\n"
+      },
+      {
+        "name": "Start the server",
+        "condition": null,
+        "type": "power",
+        "action": "start",
+        "wait": false
+      }
+    ]
+  }
+}

@@ -505,4 +505,181 @@ mod tests {
             vec!["steps: at most 100 steps are allowed"]
         );
     }
+
+    #[test]
+    fn example_templates_are_valid_and_render() {
+        use crate::{
+            installer::{self, SubmittedVariable},
+            model::{EXPORT_FORMAT, EXPORT_VERSION, ExportDocument},
+            render::{AllocationContext, Named, PanelContext, Renderer, ServerContext, UserContext},
+        };
+        use std::collections::BTreeMap;
+
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
+        let mut files: Vec<_> = std::fs::read_dir(&dir)
+            .expect("examples directory should exist")
+            .map(|entry| entry.expect("dir entry").path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.ends_with(".template.json"))
+            })
+            .collect();
+        files.sort();
+        assert!(
+            files.len() >= 7,
+            "expected example templates in {}, found {}",
+            dir.display(),
+            files.len()
+        );
+
+        let sample_value = |variable: &Variable, enable_booleans: bool| -> String {
+            let has_rule = |name: &str| {
+                variable.rules.iter().any(|rule| {
+                    rule.split(':')
+                        .next()
+                        .is_some_and(|head| head.trim().eq_ignore_ascii_case(name))
+                })
+            };
+            if enable_booleans && has_rule("boolean") {
+                return "1".to_string();
+            }
+            if !variable.default_value.is_empty() {
+                return variable.default_value.clone();
+            }
+            if has_rule("boolean") {
+                return "1".to_string();
+            }
+            if has_rule("integer") || has_rule("numeric") {
+                return "24454".to_string();
+            }
+            if let Some(in_rule) = variable.rules.iter().find(|rule| {
+                rule.split(':')
+                    .next()
+                    .is_some_and(|head| head.trim().eq_ignore_ascii_case("in"))
+            }) && let Some(first) = in_rule
+                .split_once(':')
+                .and_then(|(_, rest)| rest.split(',').next())
+            {
+                return first.trim().trim_matches('"').to_string();
+            }
+            if has_rule("required") {
+                "sample-value".to_string()
+            } else {
+                String::new()
+            }
+        };
+
+        let make_renderer = |values: &[(String, String)]| {
+            let allocation = AllocationContext {
+                ip: "127.0.0.1".to_string(),
+                ip_alias: Some("play.example.com".to_string()),
+                port: 25565,
+                primary: true,
+            };
+            Renderer::new(
+                ServerContext {
+                    uuid: Uuid::nil(),
+                    uuid_short: "0000abcd".to_string(),
+                    name: "Survival".to_string(),
+                    description: Some("Example server".to_string()),
+                    memory: 4096,
+                    swap: 0,
+                    disk: 10240,
+                    cpu: 200,
+                    image: "ghcr.io/ptero-eggs/yolks:java_21".to_string(),
+                    startup: "java -jar server.jar".to_string(),
+                    ip: Some(allocation.ip.clone()),
+                    ip_alias: allocation.ip_alias.clone(),
+                    port: Some(allocation.port),
+                    allocations: vec![allocation],
+                    egg: Named {
+                        uuid: Uuid::nil(),
+                        name: "Paper".to_string(),
+                    },
+                    nest: Named {
+                        uuid: Uuid::nil(),
+                        name: "Minecraft".to_string(),
+                    },
+                    node: Named {
+                        uuid: Uuid::nil(),
+                        name: "node-1".to_string(),
+                    },
+                    env: BTreeMap::from([("SERVER_JARFILE".to_string(), "server.jar".to_string())]),
+                    timezone: Some("UTC".to_string()),
+                },
+                UserContext {
+                    uuid: Uuid::nil(),
+                    username: "admin".to_string(),
+                    email: "admin@example.com".to_string(),
+                },
+                PanelContext {
+                    name: "Calagopus".to_string(),
+                    url: "https://panel.example.com".to_string(),
+                },
+                values,
+            )
+        };
+
+        for path in files {
+            let raw = std::fs::read_to_string(&path)
+                .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+            let doc: ExportDocument = serde_json::from_str(&raw)
+                .unwrap_or_else(|err| panic!("failed to parse {}: {err}", path.display()));
+            assert_eq!(doc.format, EXPORT_FORMAT, "{}", path.display());
+            assert_eq!(doc.version, EXPORT_VERSION, "{}", path.display());
+
+            let payload = TemplatePayload {
+                name: doc.template.name,
+                description: doc.template.description,
+                enabled: true,
+                egg_uuids: Vec::new(),
+                variables: doc.template.variables,
+                steps: doc.template.steps,
+            };
+            payload
+                .validate()
+                .unwrap_or_else(|err| panic!("garde failed for {}: {err}", path.display()));
+            let data = payload
+                .into_data()
+                .unwrap_or_else(|errs| panic!("validation failed for {}: {errs:?}", path.display()));
+            assert!(!data.steps.is_empty(), "{} has no steps", path.display());
+
+            // Validate both with default values and with all boolean toggles enabled so every
+            // conditional step is rendered and checked.
+            for enable_booleans in [false, true] {
+                let submitted: Vec<SubmittedVariable> = data
+                    .variables
+                    .iter()
+                    .map(|variable| SubmittedVariable {
+                        key: variable.key.clone(),
+                        value: sample_value(variable, enable_booleans),
+                    })
+                    .collect();
+                let values = installer::check_values(&data.variables, submitted).unwrap_or_else(
+                    |errs| {
+                        panic!(
+                            "variable validation failed for {} (booleans={enable_booleans}): {errs:?}",
+                            path.display()
+                        )
+                    },
+                );
+                let renderer = make_renderer(&values);
+                let planned = installer::plan(&renderer, &data.steps).unwrap_or_else(|errs| {
+                    panic!(
+                        "plan failed for {} (booleans={enable_booleans}): {errs:?}",
+                        path.display()
+                    )
+                });
+                assert_eq!(planned.len(), data.steps.len(), "{}", path.display());
+                if enable_booleans {
+                    assert!(
+                        planned.iter().all(Option::is_some),
+                        "expected all steps to render when booleans are enabled in {}",
+                        path.display()
+                    );
+                }
+            }
+        }
+    }
 }

@@ -2,7 +2,7 @@
 use crate::{
     db::{Install, InstallStatus, StepProgress, StepStatus},
     installer::MAX_FILE_BYTES,
-    model::{PowerAction, StepKind, absolute, search_regex, split_path},
+    model::{PowerAction, StepKind, absolute, join_path, search_regex, split_path},
 };
 use axum::http::StatusCode;
 use shared::{State, models::server::Server};
@@ -12,6 +12,8 @@ use uuid::Uuid;
 use wings_api::client::{ApiHttpError, AsyncRequestReader, WingsClient};
 
 const POWER_TIMEOUT: Duration = Duration::from_secs(120);
+const POWER_POLL_FAST: Duration = Duration::from_secs(1);
+const POWER_POLL_FAST_WINDOW: Duration = Duration::from_secs(10);
 const POWER_POLL: Duration = Duration::from_secs(2);
 /// How long Wings may wait for another power action to finish first.
 const POWER_LOCK_SECONDS: u64 = 30;
@@ -33,6 +35,17 @@ fn mib(bytes: usize) -> usize {
     bytes / 1024 / 1024
 }
 
+fn check_output_size(path: &str, len: usize) -> Result<(), String> {
+    if len > MAX_FILE_BYTES {
+        return Err(format!(
+            "`{}` would exceed {} MiB",
+            absolute(path),
+            mib(MAX_FILE_BYTES)
+        ));
+    }
+    Ok(())
+}
+
 /// Runs the install in a background task.
 pub fn spawn(
     state: State,
@@ -40,11 +53,32 @@ pub fn spawn(
     user: Uuid,
     install: Uuid,
     planned: Vec<Option<StepKind>>,
-    progress: Vec<StepProgress>,
+    mut progress: Vec<StepProgress>,
 ) {
     tokio::spawn(async move {
-        if let Err(err) = run(&state, server, user, install, planned, progress).await {
-            tracing::error!(%install, "template install could not be recorded: {err:#}");
+        if let Err(err) = run(&state, server, user, install, planned, &mut progress).await {
+            tracing::error!(%install, "template install aborted unexpectedly: {err:#}");
+            let error = format!("unexpected error: {err:#}");
+            for step in &mut progress {
+                if step.status == StepStatus::Running {
+                    step.status = StepStatus::Failed;
+                    step.message.get_or_insert_with(|| error.clone());
+                }
+            }
+            if let Err(finish_err) = Install::finish(
+                &state.database,
+                install,
+                InstallStatus::Failed,
+                &progress,
+                Some(&error),
+            )
+            .await
+            {
+                tracing::error!(
+                    %install,
+                    "failed to mark aborted template install as failed: {finish_err:#}"
+                );
+            }
         }
     });
 }
@@ -55,7 +89,7 @@ async fn run(
     user: Uuid,
     install: Uuid,
     planned: Vec<Option<StepKind>>,
-    mut progress: Vec<StepProgress>,
+    progress: &mut [StepProgress],
 ) -> Result<(), anyhow::Error> {
     let client = match connect(state, &server).await {
         Ok(client) => client,
@@ -65,7 +99,7 @@ async fn run(
                 &state.database,
                 install,
                 InstallStatus::Failed,
-                &progress,
+                progress,
                 Some(&error),
             )
             .await?;
@@ -83,12 +117,12 @@ async fn run(
         let Some(kind) = kind else {
             progress[index].status = StepStatus::Skipped;
             progress[index].message = Some("condition not met".to_string());
-            Install::set_progress(&state.database, install, &progress).await?;
+            Install::set_progress(&state.database, install, progress).await?;
             continue;
         };
 
         progress[index].status = StepStatus::Running;
-        Install::set_progress(&state.database, install, &progress).await?;
+        Install::set_progress(&state.database, install, progress).await?;
 
         let result = {
             let step = executor.execute(kind);
@@ -126,7 +160,7 @@ async fn run(
                     &state.database,
                     install,
                     InstallStatus::Failed,
-                    &progress,
+                    progress,
                     Some(&error),
                 )
                 .await?;
@@ -139,7 +173,7 @@ async fn run(
         &state.database,
         install,
         InstallStatus::Success,
-        &progress,
+        progress,
         None,
     )
     .await?;
@@ -178,13 +212,17 @@ impl Executor {
             } => self.replace(path, search, replace, *regex).await,
             StepKind::AppendFile { path, content } => {
                 let mut data = self.read(path).await?.unwrap_or_default();
+                check_output_size(path, data.len().saturating_add(content.len()))?;
                 data.extend_from_slice(content.as_bytes());
                 self.write(path, data).await?;
                 Ok(None)
             }
             StepKind::PrependFile { path, content } => {
                 let existing = self.read(path).await?.unwrap_or_default();
-                let mut data = content.as_bytes().to_vec();
+                let total = existing.len().saturating_add(content.len());
+                check_output_size(path, total)?;
+                let mut data = Vec::with_capacity(total);
+                data.extend_from_slice(content.as_bytes());
                 data.extend_from_slice(&existing);
                 self.write(path, data).await?;
                 Ok(None)
@@ -214,6 +252,7 @@ impl Executor {
     }
 
     async fn write(&self, path: &str, data: Vec<u8>) -> Result<(), String> {
+        check_output_size(path, data.len())?;
         self.client
             .post_servers_server_files_write(
                 self.server.uuid,
@@ -281,20 +320,9 @@ impl Executor {
         let content = String::from_utf8(data)
             .map_err(|_| format!("`{}` is not a UTF-8 text file", absolute(path)))?;
 
-        let (count, replaced) = if regex {
-            let pattern =
-                search_regex(search).map_err(|err| format!("invalid regex: {err}"))?;
-            let count = pattern.find_iter(&content).count();
-            (count, pattern.replace_all(&content, replace).into_owned())
-        } else {
-            (
-                content.matches(search).count(),
-                content.replace(search, replace),
-            )
-        };
-        if count == 0 {
+        let Some((count, replaced)) = apply_replace(path, &content, search, replace, regex)? else {
             return Ok(Some("no matches".to_string()));
-        }
+        };
         self.write(path, replaced.into_bytes()).await?;
         Ok(Some(format!(
             "replaced {count} {}",
@@ -334,7 +362,7 @@ impl Executor {
             .await
             .map_err(wings_error)?;
         Ok(Some(match file_name {
-            Some(name) => format!("downloaded to `{}`", absolute(&join(directory, name))),
+            Some(name) => format!("downloaded to `{}`", absolute(&join_path(directory, name))),
             None => format!("downloaded into `{}`", absolute(directory)),
         }))
     }
@@ -472,8 +500,8 @@ impl Executor {
 
         let mut files = Vec::with_capacity(names.len());
         for name in &names {
-            let source = join(from, name);
-            let target = join(to, name);
+            let source = join_path(from, name);
+            let target = join_path(to, name);
             for path in [&source, &target] {
                 if self.server.is_ignored_either(absolute(path)) {
                     return Err(format!("`{}` is not accessible", absolute(path)));
@@ -524,6 +552,19 @@ impl Executor {
     }
 
     async fn power(&self, action: PowerAction, wait: bool) -> StepResult {
+        // Capture pre-restart state and uptime so a fast restart completing within a single
+        // poll window is still detected via a decreased uptime (and an offline server does
+        // not stall waiting to leave `running`).
+        let before = if action == PowerAction::Restart && wait {
+            self.client
+                .get_servers_server_utilization(self.server.uuid)
+                .await
+                .ok()
+                .map(|response| (response.utilization.state, response.utilization.uptime))
+        } else {
+            None
+        };
+
         self.client
             .post_servers_server_power(
                 self.server.uuid,
@@ -538,38 +579,114 @@ impl Executor {
             return Ok(None);
         }
 
-        let want_running = matches!(action, PowerAction::Start | PowerAction::Restart);
-        // a restart only counts once the server left `running`
-        let mut left_running = action != PowerAction::Restart;
-        let deadline = tokio::time::Instant::now() + POWER_TIMEOUT;
+        let mut tracker = PowerWait::new(action, before);
+        let started = tokio::time::Instant::now();
+        let deadline = started + POWER_TIMEOUT;
         loop {
-            tokio::time::sleep(POWER_POLL).await;
+            let poll = if started.elapsed() < POWER_POLL_FAST_WINDOW {
+                POWER_POLL_FAST
+            } else {
+                POWER_POLL
+            };
+            tokio::time::sleep(poll).await;
             // the utilization payload is small and stable across Wings versions, unlike the
             // full server details (older nodes fail to deserialize those)
-            let state = self
+            let utilization = self
                 .client
                 .get_servers_server_utilization(self.server.uuid)
                 .await
                 .map_err(wings_error)?
-                .utilization
-                .state;
-            match state {
-                wings_api::ServerState::Offline if !want_running => {
-                    return Ok(Some("the server is offline".to_string()));
-                }
-                wings_api::ServerState::Running if want_running && left_running => {
-                    return Ok(Some("the server is running".to_string()));
-                }
-                wings_api::ServerState::Running => {}
-                _ => left_running = true,
+                .utilization;
+            if let Some(message) = tracker.observe(utilization.state, utilization.uptime) {
+                return Ok(Some(message.to_string()));
             }
             if tokio::time::Instant::now() >= deadline {
                 return Err(format!(
                     "the server did not become {} within {} seconds (state: {})",
-                    if want_running { "running" } else { "offline" },
+                    if tracker.want_running {
+                        "running"
+                    } else {
+                        "offline"
+                    },
                     POWER_TIMEOUT.as_secs(),
-                    state_name(state)
+                    state_name(utilization.state)
                 ));
+            }
+        }
+    }
+}
+
+fn apply_replace(
+    path: &str,
+    content: &str,
+    search: &str,
+    replace: &str,
+    regex: bool,
+) -> Result<Option<(usize, String)>, String> {
+    if regex {
+        let pattern = search_regex(search).map_err(|err| format!("invalid regex: {err}"))?;
+        let count = pattern.find_iter(content).count();
+        if count == 0 {
+            return Ok(None);
+        }
+        let replaced = pattern.replace_all(content, replace).into_owned();
+        check_output_size(path, replaced.len())?;
+        Ok(Some((count, replaced)))
+    } else {
+        let count = content.matches(search).count();
+        if count == 0 {
+            return Ok(None);
+        }
+        let removed = count.saturating_mul(search.len());
+        let added = count.saturating_mul(replace.len());
+        let projected = content.len().saturating_sub(removed).saturating_add(added);
+        check_output_size(path, projected)?;
+        let replaced = content.replace(search, replace);
+        check_output_size(path, replaced.len())?;
+        Ok(Some((count, replaced)))
+    }
+}
+
+struct PowerWait {
+    want_running: bool,
+    left_running: bool,
+    previous_uptime: Option<u64>,
+}
+
+impl PowerWait {
+    fn new(action: PowerAction, before: Option<(wings_api::ServerState, u64)>) -> Self {
+        let want_running = matches!(action, PowerAction::Start | PowerAction::Restart);
+        let (left_running, previous_uptime) = if action == PowerAction::Restart {
+            match before {
+                Some((wings_api::ServerState::Running, uptime)) => (false, Some(uptime)),
+                Some(_) => (true, None),
+                None => (false, None),
+            }
+        } else {
+            (true, None)
+        };
+        Self {
+            want_running,
+            left_running,
+            previous_uptime,
+        }
+    }
+
+    fn observe(&mut self, state: wings_api::ServerState, uptime: u64) -> Option<&'static str> {
+        match state {
+            wings_api::ServerState::Offline if !self.want_running => {
+                Some("the server is offline")
+            }
+            wings_api::ServerState::Running if self.want_running => {
+                if !self.left_running && self.previous_uptime.is_some_and(|prev| uptime < prev) {
+                    self.left_running = true;
+                }
+                self.left_running.then_some("the server is running")
+            }
+            wings_api::ServerState::Running => None,
+            _ => {
+                self.left_running = true;
+                None
             }
         }
     }
@@ -584,11 +701,89 @@ fn state_name(state: wings_api::ServerState) -> &'static str {
     }
 }
 
-fn join(directory: &str, name: &str) -> String {
-    if directory.is_empty() {
-        name.to_string()
-    } else {
-        format!("{directory}/{name}")
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wings_api::ServerState;
+
+    #[test]
+    fn power_wait_detects_fast_restart_via_decreased_uptime() {
+        let mut wait = PowerWait::new(PowerAction::Restart, Some((ServerState::Running, 60_000)));
+        assert_eq!(wait.observe(ServerState::Running, 61_000), None);
+        assert_eq!(
+            wait.observe(ServerState::Running, 400),
+            Some("the server is running")
+        );
+    }
+
+    #[test]
+    fn power_wait_handles_normal_restart_and_offline_start() {
+        let mut wait = PowerWait::new(PowerAction::Restart, Some((ServerState::Running, 10_000)));
+        assert_eq!(wait.observe(ServerState::Stopping, 0), None);
+        assert_eq!(wait.observe(ServerState::Starting, 0), None);
+        assert_eq!(
+            wait.observe(ServerState::Running, 12_000),
+            Some("the server is running")
+        );
+
+        let mut from_offline =
+            PowerWait::new(PowerAction::Restart, Some((ServerState::Offline, 0)));
+        assert_eq!(
+            from_offline.observe(ServerState::Running, 100),
+            Some("the server is running")
+        );
+
+        let mut fallback = PowerWait::new(PowerAction::Restart, None);
+        assert_eq!(fallback.observe(ServerState::Running, 500), None);
+        assert_eq!(fallback.observe(ServerState::Stopping, 0), None);
+        assert_eq!(
+            fallback.observe(ServerState::Running, 100),
+            Some("the server is running")
+        );
+    }
+
+    #[test]
+    fn power_wait_stop_and_start() {
+        let mut stop = PowerWait::new(PowerAction::Stop, None);
+        assert_eq!(stop.observe(ServerState::Running, 5_000), None);
+        assert_eq!(stop.observe(ServerState::Stopping, 0), None);
+        assert_eq!(
+            stop.observe(ServerState::Offline, 0),
+            Some("the server is offline")
+        );
+
+        let mut start = PowerWait::new(PowerAction::Start, None);
+        assert_eq!(start.observe(ServerState::Starting, 0), None);
+        assert_eq!(
+            start.observe(ServerState::Running, 10),
+            Some("the server is running")
+        );
+    }
+
+    #[test]
+    fn output_size_guard_rejects_oversized_writes_and_replaces() {
+        assert!(check_output_size("a.txt", MAX_FILE_BYTES).is_ok());
+        assert!(check_output_size("a.txt", MAX_FILE_BYTES + 1).is_err());
+
+        // Literal expansion exceeding MAX_FILE_BYTES is rejected before allocating replacement
+        let content = "x".repeat(10_000);
+        let huge = "y".repeat(1000);
+        let err = apply_replace("a.txt", &content, "x", &huge, false).unwrap_err();
+        assert!(err.contains("would exceed"), "{err}");
+
+        // Regex expansion exceeding MAX_FILE_BYTES is also rejected
+        let err = apply_replace("a.txt", &content, "x", &huge, true).unwrap_err();
+        assert!(err.contains("would exceed"), "{err}");
+
+        // No matches returns Ok(None)
+        assert_eq!(
+            apply_replace("a.txt", "hello", "missing", "world", false).unwrap(),
+            None
+        );
+        assert_eq!(
+            apply_replace("a.txt", "hello", "hello", "world", false).unwrap(),
+            Some((1, "world".to_string()))
+        );
     }
 }
 

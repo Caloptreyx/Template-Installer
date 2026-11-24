@@ -1,0 +1,120 @@
+{
+  "format": "calagopus-template-installer",
+  "version": 1,
+  "exported_at": "2026-11-24T08:30:00Z",
+  "template": {
+    "name": "GeyserMC & Floodgate",
+    "description": "Allow Minecraft Bedrock Edition players to join your Paper/Spigot Java server. Installs the latest GeyserMC and optionally Floodgate so Bedrock players can join without a Java account.",
+    "variables": [
+      {
+        "key": "bedrock_port",
+        "label": "Bedrock Port",
+        "description": "The UDP port Bedrock players connect on (usually 19132). Add a matching allocation in the Network tab.",
+        "default_value": "19132",
+        "rules": [
+          "required",
+          "integer",
+          "between:1024,65535"
+        ]
+      },
+      {
+        "key": "install_floodgate",
+        "label": "Install Floodgate",
+        "description": "Allow Bedrock players to join without owning Minecraft Java Edition.",
+        "default_value": "1",
+        "rules": [
+          "boolean"
+        ]
+      },
+      {
+        "key": "auth_type",
+        "label": "Authentication Mode",
+        "description": "How Geyser authenticates Bedrock clients against the Java server. Use floodgate when Floodgate is installed.",
+        "default_value": "floodgate",
+        "rules": [
+          "required",
+          "in:floodgate,online,offline"
+        ]
+      },
+      {
+        "key": "motd_line1",
+        "label": "Bedrock MOTD (Line 1)",
+        "description": "First line displayed in the Bedrock server list.",
+        "default_value": "Bedrock Crossplay",
+        "rules": [
+          "required",
+          "string",
+          "max:64"
+        ]
+      },
+      {
+        "key": "motd_line2",
+        "label": "Bedrock MOTD (Line 2)",
+        "description": "Second line displayed in the Bedrock server list.",
+        "default_value": "Powered by GeyserMC",
+        "rules": [
+          "required",
+          "string",
+          "max:64"
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "name": "Stop the server",
+        "condition": null,
+        "type": "power",
+        "action": "stop",
+        "wait": true
+      },
+      {
+        "name": "Create Geyser config folder",
+        "condition": null,
+        "type": "create_folder",
+        "path": "plugins/Geyser-Spigot"
+      },
+      {
+        "name": "Remove previous GeyserMC jar",
+        "condition": null,
+        "type": "delete",
+        "path": "plugins/Geyser-Spigot.jar"
+      },
+      {
+        "name": "Download GeyserMC (Spigot/Paper)",
+        "condition": null,
+        "type": "pull_file",
+        "url": "https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot",
+        "directory": "plugins",
+        "file_name": "Geyser-Spigot.jar"
+      },
+      {
+        "name": "Remove previous Floodgate jar",
+        "condition": "{{ install_floodgate }}",
+        "type": "delete",
+        "path": "plugins/floodgate-spigot.jar"
+      },
+      {
+        "name": "Download Floodgate (Spigot/Paper)",
+        "condition": "{{ install_floodgate }}",
+        "type": "pull_file",
+        "url": "https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot",
+        "directory": "plugins",
+        "file_name": "floodgate-spigot.jar"
+      },
+      {
+        "name": "Write GeyserMC configuration",
+        "condition": null,
+        "type": "write_file",
+        "path": "plugins/Geyser-Spigot/config.yml",
+        "content": "# GeyserMC configuration\nbedrock:\n  address: 0.0.0.0\n  port: {{ bedrock_port }}\n  clone-remote-port: false\n  motd1: {{ motd_line1 | tojson }}\n  motd2: {{ motd_line2 | tojson }}\n  server-name: {{ server.name | tojson }}\n  compression-level: 6\n  enable-proxy-protocol: false\n\nremote:\n  address: auto\n  port: {{ server.port | default(25565, true) }}\n  auth-type: {{ auth_type }}\n  allow-password-authentication: true\n  use-proxy-protocol: false\n  forward-hostname: false\n\nfloodgate-key-file: key.pem\nallow-third-party-capes: true\nallow-third-party-ears: false\nshow-cooldown: title\nshow-coordinates: true\ndisable-bedrock-scaffolding: false\n"
+      },
+      {
+        "name": "Start the server",
+        "condition": null,
+        "type": "power",
+        "action": "start",
+        "wait": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "format": "calagopus-template-installer",
+  "version": 1,
+  "exported_at": "2026-11-24T08:30:00Z",
+  "template": {
+    "name": "ViaVersion Suite",
+    "description": "Let players join your Paper server from newer and older Minecraft versions. Installs ViaVersion 5.12.2 with optional ViaBackwards 5.12.2 and ViaRewind 4.2.0.",
+    "variables": [
+      {
+        "key": "install_viabackwards",
+        "label": "Install ViaBackwards",
+        "description": "Allow older Minecraft clients to connect to a newer server.",
+        "default_value": "1",
+        "rules": [
+          "boolean"
+        ]
+      },
+      {
+        "key": "install_viarewind",
+        "label": "Install ViaRewind",
+        "description": "Extend backwards compatibility down to Minecraft 1.8.x and 1.7.x (requires ViaBackwards).",
+        "default_value": "0",
+        "rules": [
+          "boolean"
+        ]
+      },
+      {
+        "key": "check_for_updates",
+        "label": "Check for Updates",
+        "description": "Notify operators when a newer ViaVersion build is available.",
+        "default_value": "1",
+        "rules": [
+          "boolean"
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "name": "Stop the server",
+        "condition": null,
+        "type": "power",
+        "action": "stop",
+        "wait": true
+      },
+      {
+        "name": "Create ViaVersion config folder",
+        "condition": null,
+        "type": "create_folder",
+        "path": "plugins/ViaVersion"
+      },
+      {
+        "name": "Remove previous ViaVersion jar",
+        "condition": null,
+        "type": "delete",
+        "path": "plugins/ViaVersion-5.12.2.jar"
+      },
+      {
+        "name": "Download ViaVersion",
+        "condition": null,
+        "type": "pull_file",
+        "url": "https://cdn.modrinth.com/data/P1OZGk5p/versions/Fkfcr89K/ViaVersion-5.12.2.jar",
+        "directory": "plugins",
+        "file_name": "ViaVersion-5.12.2.jar"
+      },
+      {
+        "name": "Remove previous ViaBackwards jar",
+        "condition": "{{ install_viabackwards }}",
+        "type": "delete",
+        "path": "plugins/ViaBackwards-5.12.2.jar"
+      },
+      {
+        "name": "Download ViaBackwards",
+        "condition": "{{ install_viabackwards }}",
+        "type": "pull_file",
+        "url": "https://cdn.modrinth.com/data/NpvuJQoq/versions/WFO37e8T/ViaBackwards-5.12.2.jar",
+        "directory": "plugins",
+        "file_name": "ViaBackwards-5.12.2.jar"
+      },
+      {
+        "name": "Remove previous ViaRewind jar",
+        "condition": "{{ install_viarewind }}",
+        "type": "delete",
+        "path": "plugins/ViaRewind-4.2.0.jar"
+      },
+      {
+        "name": "Download ViaRewind",
+        "condition": "{{ install_viarewind }}",
+        "type": "pull_file",
+        "url": "https://cdn.modrinth.com/data/TbHIxhx5/versions/EPLCoxMK/ViaRewind-4.2.0.jar",
+        "directory": "plugins",
+        "file_name": "ViaRewind-4.2.0.jar"
+      },
+      {
+        "name": "Write ViaVersion configuration",
+        "condition": null,
+        "type": "write_file",
+        "path": "plugins/ViaVersion/config.yml",
+        "content": "# ViaVersion configuration\ncheck-for-updates: {{ \"true\" if check_for_updates == \"1\" else \"false\" }}\nsend-supported-versions: false\nprevent-collision: true\nauto-team: true\n"
+      },
+      {
+        "name": "Start the server",
+        "condition": null,
+        "type": "power",
+        "action": "start",
+        "wait": false
+      }
+    ]
+  }
+}

@@ -263,6 +263,15 @@ pub fn split_path(path: &str) -> (&str, &str) {
     }
 }
 
+/// Joins a normalized directory (`""` for the server root) and entry name.
+pub fn join_path(directory: &str, name: &str) -> String {
+    if directory.is_empty() {
+        name.to_string()
+    } else {
+        format!("{directory}/{name}")
+    }
+}
+
 /// `path` as the absolute path Wings expects.
 pub fn absolute(path: &str) -> String {
     format!("/{path}")
@@ -328,6 +337,14 @@ mod tests {
     fn split_paths() {
         assert_eq!(split_path("a/b/c.zip"), ("a/b", "c.zip"));
         assert_eq!(split_path("c.zip"), ("", "c.zip"));
+    }
+
+    #[test]
+    fn join_paths() {
+        assert_eq!(join_path("", "server.jar"), "server.jar");
+        assert_eq!(absolute(&join_path("", "server.jar")), "/server.jar");
+        assert_eq!(join_path("plugins", "voicechat.jar"), "plugins/voicechat.jar");
+        assert_eq!(join_path("a/b", "c.txt"), "a/b/c.txt");
     }
 
     #[test]

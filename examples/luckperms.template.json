@@ -1,0 +1,94 @@
+{
+  "format": "calagopus-template-installer",
+  "version": 1,
+  "exported_at": "2026-11-24T08:30:00Z",
+  "template": {
+    "name": "LuckPerms",
+    "description": "Advanced permissions plugin for Bukkit, Spigot, and Paper servers. Installs LuckPerms 5.5.71 and writes a clean starter configuration.",
+    "variables": [
+      {
+        "key": "server_name",
+        "label": "Server Name",
+        "description": "Identifier for this server when using context-specific permissions across a network.",
+        "default_value": "global",
+        "rules": [
+          "required",
+          "string",
+          "max:36",
+          "regex:/^[a-zA-Z0-9_-]+$/"
+        ]
+      },
+      {
+        "key": "storage_method",
+        "label": "Storage Method",
+        "description": "Database or file format used to store permissions data.",
+        "default_value": "h2",
+        "rules": [
+          "required",
+          "in:h2,sqlite,yaml,json,hocon,mysql,mariadb,postgresql"
+        ]
+      },
+      {
+        "key": "allow_invalid_usernames",
+        "label": "Allow Invalid Usernames",
+        "description": "Allow usernames containing characters outside standard Java rules (helpful with Floodgate).",
+        "default_value": "0",
+        "rules": [
+          "boolean"
+        ]
+      },
+      {
+        "key": "auto_op",
+        "label": "Enable Auto-OP",
+        "description": "Automatically grant OP status to players who hold the luckperms.autoop permission.",
+        "default_value": "0",
+        "rules": [
+          "boolean"
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "name": "Stop the server",
+        "condition": null,
+        "type": "power",
+        "action": "stop",
+        "wait": true
+      },
+      {
+        "name": "Create LuckPerms config folder",
+        "condition": null,
+        "type": "create_folder",
+        "path": "plugins/LuckPerms"
+      },
+      {
+        "name": "Remove previous LuckPerms jar",
+        "condition": null,
+        "type": "delete",
+        "path": "plugins/LuckPerms-Bukkit-5.5.71.jar"
+      },
+      {
+        "name": "Download LuckPerms",
+        "condition": null,
+        "type": "pull_file",
+        "url": "https://cdn.modrinth.com/data/Vebnzrzj/versions/b0mk8uS6/LuckPerms-Bukkit-5.5.71.jar",
+        "directory": "plugins",
+        "file_name": "LuckPerms-Bukkit-5.5.71.jar"
+      },
+      {
+        "name": "Write LuckPerms configuration",
+        "condition": null,
+        "type": "write_file",
+        "path": "plugins/LuckPerms/config.yml",
+        "content": "# LuckPerms configuration\nserver: {{ server_name }}\nstorage-method: {{ storage_method }}\nuse-server-uuid-cache: true\nallow-invalid-usernames: {{ \"true\" if allow_invalid_usernames == \"1\" else \"false\" }}\nauto-op: {{ \"true\" if auto_op == \"1\" else \"false\" }}\nprimary-group-calculation: parents-by-weight\nargument-based-command-permissions: false\nlog-notify: true\n"
+      },
+      {
+        "name": "Start the server",
+        "condition": null,
+        "type": "power",
+        "action": "start",
+        "wait": false
+      }
+    ]
+  }
+}

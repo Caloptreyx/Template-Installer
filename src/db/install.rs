@@ -193,6 +193,16 @@ impl Install {
         Ok(())
     }
 
+    pub async fn delete(db: &Database, uuid: Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DELETE FROM {TABLE} WHERE uuid = $1"
+        )))
+        .bind(uuid)
+        .execute(db.write())
+        .await?;
+        Ok(())
+    }
+
     pub async fn by_server_uuid_uuid(
         db: &Database,
         server: Uuid,

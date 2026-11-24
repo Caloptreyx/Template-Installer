@@ -1,0 +1,98 @@
+{
+  "format": "calagopus-template-installer",
+  "version": 1,
+  "exported_at": "2026-11-24T08:30:00Z",
+  "template": {
+    "name": "DiscordSRV",
+    "description": "Connect your Minecraft server chat, console, and status events with Discord. Installs DiscordSRV 1.30.5 and configures the bot token and channels.",
+    "variables": [
+      {
+        "key": "bot_token",
+        "label": "Discord Bot Token",
+        "description": "Token for your Discord bot from the Discord Developer Portal.",
+        "default_value": "",
+        "rules": [
+          "required",
+          "string",
+          "max:128"
+        ]
+      },
+      {
+        "key": "chat_channel_id",
+        "label": "Chat Channel ID",
+        "description": "Discord text channel ID linked to in-game global chat.",
+        "default_value": "000000000000000000",
+        "rules": [
+          "required",
+          "string",
+          "regex:/^[0-9]{15,22}$/"
+        ]
+      },
+      {
+        "key": "console_channel_id",
+        "label": "Console Channel ID",
+        "description": "Optional Discord channel ID for live console output. Leave blank to disable.",
+        "default_value": "",
+        "rules": [
+          "nullable",
+          "string",
+          "regex:/^[0-9]{15,22}$/"
+        ]
+      },
+      {
+        "key": "invite_link",
+        "label": "Discord Invite Link",
+        "description": "Optional invite URL shown to players when they run /discord.",
+        "default_value": "",
+        "rules": [
+          "nullable",
+          "string",
+          "max:128"
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "name": "Stop the server",
+        "condition": null,
+        "type": "power",
+        "action": "stop",
+        "wait": true
+      },
+      {
+        "name": "Create DiscordSRV config folder",
+        "condition": null,
+        "type": "create_folder",
+        "path": "plugins/DiscordSRV"
+      },
+      {
+        "name": "Remove previous DiscordSRV jar",
+        "condition": null,
+        "type": "delete",
+        "path": "plugins/DiscordSRV-Build-1.30.5.jar"
+      },
+      {
+        "name": "Download DiscordSRV",
+        "condition": null,
+        "type": "pull_file",
+        "url": "https://cdn.modrinth.com/data/UmLGoGij/versions/ATlquwiT/DiscordSRV-Build-1.30.5.jar",
+        "directory": "plugins",
+        "file_name": "DiscordSRV-Build-1.30.5.jar"
+      },
+      {
+        "name": "Write DiscordSRV configuration",
+        "condition": null,
+        "type": "write_file",
+        "path": "plugins/DiscordSRV/config.yml",
+        "content": "# DiscordSRV configuration\nConfigVersion: 1.30.5\nBotToken: {{ bot_token | tojson }}\nChannels: {\"global\": {{ chat_channel_id | tojson }}}\nDiscordConsoleChannelId: {{ console_channel_id | tojson }}\nDiscordInviteLink: {{ invite_link | tojson }}\nDiscordChatChannelMinecraftToDiscord: true\nDiscordChatChannelDiscordToMinecraft: true\nDiscordChatChannelTruncateLength: 256\nStatusUpdateRateInMinutes: 2\n"
+      },
+      {
+        "name": "Start the server",
+        "condition": null,
+        "type": "power",
+        "action": "start",
+        "wait": false
+      }
+    ]
+  }
+}

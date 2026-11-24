@@ -115,8 +115,18 @@ Admins manage templates on the extension's card under **Admin → Extensions**. 
 
 ## Import / export format
 
-`examples/simple-voice-chat.template.json` is a complete example: it stops the server, downloads
-Simple Voice Chat, writes its config with the port the user picks and starts the server again.
+Ready-to-import templates live in `examples/`:
+
+| File | Template | Highlights |
+|---|---|---|
+| `examples/simple-voice-chat.template.json` | Simple Voice Chat | Downloads Simple Voice Chat 2.6.24 and writes its port and group config. |
+| `examples/geyser-floodgate.template.json` | GeyserMC & Floodgate | Latest GeyserMC + conditional Floodgate for Bedrock crossplay on Paper/Spigot. |
+| `examples/luckperms.template.json` | LuckPerms | LuckPerms 5.5.71 Bukkit plugin with storage backend and starter config. |
+| `examples/viaversion-suite.template.json` | ViaVersion Suite | ViaVersion 5.12.2 with conditional ViaBackwards and ViaRewind toggles. |
+| `examples/spark-profiler.template.json` | spark Profiler | spark 1.10.196 performance profiler with background profiling and tick monitor settings. |
+| `examples/bluemap.template.json` | BlueMap 3D Web Map | BlueMap 5.29 (Paper) with `accept-download: true` and web server port config. |
+| `examples/discordsrv.template.json` | DiscordSRV | DiscordSRV 1.30.5 with bot token and chat/console channel configuration. |
+| `examples/minecraft-server-properties.template.json` | Minecraft Server Properties | Configures `server.properties`, optional EULA acceptance, and optional RCON with `random_string(24)`. |
 
 ```json
 {

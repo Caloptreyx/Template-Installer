@@ -1,0 +1,166 @@
+{
+  "format": "calagopus-template-installer",
+  "version": 1,
+  "exported_at": "2026-11-24T08:30:00Z",
+  "template": {
+    "name": "Minecraft Server Properties",
+    "description": "Configure core Minecraft server settings (MOTD, gamemode, difficulty, player cap, PvP, whitelist, view distance, online mode), optionally enable RCON with a generated password, and optionally accept the Minecraft EULA.",
+    "variables": [
+      {
+        "key": "motd",
+        "label": "Server MOTD",
+        "description": "Message of the day shown in the Minecraft multiplayer server list.",
+        "default_value": "A Minecraft Server",
+        "rules": [
+          "required",
+          "string",
+          "max:128"
+        ]
+      },
+      {
+        "key": "gamemode",
+        "label": "Default Gamemode",
+        "description": "Game mode assigned to new players joining the server.",
+        "default_value": "survival",
+        "rules": [
+          "required",
+          "in:survival,creative,adventure,spectator"
+        ]
+      },
+      {
+        "key": "difficulty",
+        "label": "Difficulty",
+        "description": "World difficulty level.",
+        "default_value": "normal",
+        "rules": [
+          "required",
+          "in:peaceful,easy,normal,hard"
+        ]
+      },
+      {
+        "key": "max_players",
+        "label": "Max Players",
+        "description": "Maximum number of concurrent players allowed online.",
+        "default_value": "20",
+        "rules": [
+          "required",
+          "integer",
+          "between:1,1000"
+        ]
+      },
+      {
+        "key": "pvp",
+        "label": "Enable PvP",
+        "description": "Allow players to damage each other.",
+        "default_value": "1",
+        "rules": [
+          "boolean"
+        ]
+      },
+      {
+        "key": "whitelist",
+        "label": "Enable Whitelist",
+        "description": "Only allow players listed in whitelist.json to connect.",
+        "default_value": "0",
+        "rules": [
+          "boolean"
+        ]
+      },
+      {
+        "key": "view_distance",
+        "label": "View Distance",
+        "description": "Number of chunks sent to clients in each direction.",
+        "default_value": "10",
+        "rules": [
+          "required",
+          "integer",
+          "between:3,32"
+        ]
+      },
+      {
+        "key": "online_mode",
+        "label": "Online Mode",
+        "description": "Verify players against Mojang authentication servers. Disable only behind a proxy.",
+        "default_value": "1",
+        "rules": [
+          "boolean"
+        ]
+      },
+      {
+        "key": "enable_rcon",
+        "label": "Enable RCON",
+        "description": "Enable remote console access with an automatically generated 24-character password.",
+        "default_value": "0",
+        "rules": [
+          "boolean"
+        ]
+      },
+      {
+        "key": "rcon_port",
+        "label": "RCON Port",
+        "description": "TCP port RCON listens on when RCON is enabled.",
+        "default_value": "25575",
+        "rules": [
+          "required",
+          "integer",
+          "between:1024,65535"
+        ]
+      },
+      {
+        "key": "accept_eula",
+        "label": "Accept Minecraft EULA",
+        "description": "Write eula=true to eula.txt, confirming agreement to the Minecraft EULA (https://aka.ms/MinecraftEULA).",
+        "default_value": "1",
+        "rules": [
+          "boolean"
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "name": "Stop the server",
+        "condition": null,
+        "type": "power",
+        "action": "stop",
+        "wait": true
+      },
+      {
+        "name": "Accept Minecraft EULA",
+        "condition": "{{ accept_eula }}",
+        "type": "write_file",
+        "path": "eula.txt",
+        "content": "# By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\n# Configured on {{ now(\"%Y-%m-%d\") }}\neula=true\n"
+      },
+      {
+        "name": "Write server.properties",
+        "condition": null,
+        "type": "write_file",
+        "path": "server.properties",
+        "content": "# Minecraft server properties\nmotd={{ motd }}\nserver-port={{ server.port | default(25565, true) }}\ngamemode={{ gamemode }}\ndifficulty={{ difficulty }}\nmax-players={{ max_players }}\npvp={{ \"true\" if pvp == \"1\" else \"false\" }}\nwhite-list={{ \"true\" if whitelist == \"1\" else \"false\" }}\nenforce-whitelist={{ \"true\" if whitelist == \"1\" else \"false\" }}\nview-distance={{ view_distance }}\nonline-mode={{ \"true\" if online_mode == \"1\" else \"false\" }}\nenable-rcon=false\n"
+      },
+      {
+        "name": "Enable RCON in server.properties",
+        "condition": "{{ enable_rcon }}",
+        "type": "replace_in_file",
+        "path": "server.properties",
+        "search": "^enable-rcon=.*$",
+        "replace": "enable-rcon=true",
+        "regex": true
+      },
+      {
+        "name": "Append RCON port and generated password",
+        "condition": "{{ enable_rcon }}",
+        "type": "append_file",
+        "path": "server.properties",
+        "content": "rcon.port={{ rcon_port }}\nrcon.password={{ random_string(24) }}\n"
+      },
+      {
+        "name": "Start the server",
+        "condition": null,
+        "type": "power",
+        "action": "start",
+        "wait": false
+      }
+    ]
+  }
+}

@@ -39,28 +39,37 @@ export default function ServerTemplatesPage() {
     queryKey: [...baseKey, 'installs'],
     queryFn: () => getServerInstalls(server.uuid),
     refetchInterval: (query) =>
-      query.state.data?.some((install) => install.status === 'running') ? RUNNING_INSTALLS_POLL_MS : false,
+      query.state.status !== 'error' && query.state.data?.some((install) => install.status === 'running')
+        ? RUNNING_INSTALLS_POLL_MS
+        : false,
   });
   const watched = useInstall(server.uuid, watchedUuid);
+  const watchedInstall = watched.data;
 
   useEffect(() => {
-    const install = watched.data;
-    if (!install || install.status === 'running') return;
+    setWatchedUuid(null);
+    setDialog(null);
+  }, [server.uuid]);
 
-    if (install.status === 'success') {
-      addToast(tExt('install.succeeded', { name: install.templateName }), 'success');
+  useEffect(() => {
+    if (!watchedUuid || !watchedInstall || watchedInstall.uuid !== watchedUuid || watchedInstall.status === 'running') {
+      return;
+    }
+
+    if (watchedInstall.status === 'success') {
+      addToast(tExt('install.succeeded', { name: watchedInstall.templateName }), 'success');
     } else {
-      addToast(tExt('install.failed', { name: install.templateName }), 'error');
+      addToast(tExt('install.failed', { name: watchedInstall.templateName }), 'error');
     }
     setWatchedUuid(null);
-    installs.refetch();
-  }, [watched.data?.status]);
+    void queryClient.invalidateQueries({ queryKey: [...serverTemplatesQueryKey(server.uuid), 'installs'] });
+  }, [watchedUuid, watchedInstall, addToast, tExt, queryClient, server.uuid]);
 
   const onStarted = (install: Install) => {
     queryClient.setQueryData(installQueryKey(server.uuid, install.uuid), install);
     setWatchedUuid(install.uuid);
     setDialog({ kind: 'progress', installUuid: install.uuid, templateName: install.templateName });
-    installs.refetch();
+    void queryClient.invalidateQueries({ queryKey: [...serverTemplatesQueryKey(server.uuid), 'installs'] });
   };
 
   const query = search.trim().toLowerCase();

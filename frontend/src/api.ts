@@ -23,6 +23,16 @@ export const RESERVED_VARIABLE_KEYS = [
   'random_string',
   'uuid',
   'now',
+  'range',
+  'dict',
+  'debug',
+  'namespace',
+  'true',
+  'false',
+  'none',
+  'True',
+  'False',
+  'None',
 ];
 
 export const stepTypeSchema = z.enum([

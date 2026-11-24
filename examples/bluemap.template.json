@@ -1,0 +1,92 @@
+{
+  "format": "calagopus-template-installer",
+  "version": 1,
+  "exported_at": "2026-11-24T08:30:00Z",
+  "template": {
+    "name": "BlueMap 3D Web Map",
+    "description": "Generates interactive 3D maps of your Minecraft worlds served over a built-in web server. Installs BlueMap 5.29 (Paper) with asset download accepted and configures the web server port.",
+    "variables": [
+      {
+        "key": "web_port",
+        "label": "Web Server Port",
+        "description": "TCP port BlueMap listens on. Add an extra allocation in the Network tab and enter its port here.",
+        "default_value": "8100",
+        "rules": [
+          "required",
+          "integer",
+          "between:1024,65535"
+        ]
+      },
+      {
+        "key": "render_thread_count",
+        "label": "Render Threads",
+        "description": "Number of CPU threads BlueMap uses to render map tiles.",
+        "default_value": "2",
+        "rules": [
+          "required",
+          "integer",
+          "between:1,16"
+        ]
+      },
+      {
+        "key": "enable_webserver",
+        "label": "Enable Built-in Web Server",
+        "description": "Serve the 3D map directly from BlueMap's integrated HTTP server.",
+        "default_value": "1",
+        "rules": [
+          "boolean"
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "name": "Stop the server",
+        "condition": null,
+        "type": "power",
+        "action": "stop",
+        "wait": true
+      },
+      {
+        "name": "Create BlueMap config folder",
+        "condition": null,
+        "type": "create_folder",
+        "path": "plugins/BlueMap"
+      },
+      {
+        "name": "Remove previous BlueMap jar",
+        "condition": null,
+        "type": "delete",
+        "path": "plugins/bluemap-5.29-paper.jar"
+      },
+      {
+        "name": "Download BlueMap (Paper)",
+        "condition": null,
+        "type": "pull_file",
+        "url": "https://cdn.modrinth.com/data/swbUV1cr/versions/uHQIrUdf/bluemap-5.29-paper.jar",
+        "directory": "plugins",
+        "file_name": "bluemap-5.29-paper.jar"
+      },
+      {
+        "name": "Write BlueMap core config",
+        "condition": null,
+        "type": "write_file",
+        "path": "plugins/BlueMap/core.conf",
+        "content": "## BlueMap core configuration\naccept-download: true\ndata: \"bluemap\"\nrender-thread-count: {{ render_thread_count }}\nmetrics: true\n"
+      },
+      {
+        "name": "Write BlueMap web server config",
+        "condition": null,
+        "type": "write_file",
+        "path": "plugins/BlueMap/webserver.conf",
+        "content": "## BlueMap web server configuration\nenabled: {{ \"true\" if enable_webserver == \"1\" else \"false\" }}\nwebroot: \"bluemap/web\"\nport: {{ web_port }}\n"
+      },
+      {
+        "name": "Start the server",
+        "condition": null,
+        "type": "power",
+        "action": "start",
+        "wait": false
+      }
+    ]
+  }
+}
